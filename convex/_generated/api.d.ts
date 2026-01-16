@@ -8,6 +8,9 @@
  * @module
  */
 
+import type * as agents_graph from "../agents/graph.js";
+import type * as agents_prompts from "../agents/prompts.js";
+import type * as agents_state from "../agents/state.js";
 import type * as ideas from "../ideas.js";
 import type * as messages from "../messages.js";
 import type * as threads from "../threads.js";
@@ -20,6 +23,9 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "agents/graph": typeof agents_graph;
+  "agents/prompts": typeof agents_prompts;
+  "agents/state": typeof agents_state;
   ideas: typeof ideas;
   messages: typeof messages;
   threads: typeof threads;
