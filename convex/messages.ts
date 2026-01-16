@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { messageTypeValidator, messagesRoleValidator } from "./schema";
 
 // ============================================
@@ -50,6 +50,31 @@ export const updateContent = mutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.messageId, {
       content: args.content,
+    });
+  },
+});
+
+// ============================================
+// INTERNAL FUNCTIONS (for actions)
+// ============================================
+
+export const createInternal = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+    role: messagesRoleValidator,
+    content: v.string(),
+    messageType: messageTypeValidator,
+    metadata: v.optional(
+      v.object({
+        step: v.optional(v.string()),
+        progress: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("messages", {
+      ...args,
+      createdAt: Date.now(),
     });
   },
 });

@@ -1,6 +1,11 @@
 // convex/trends.ts
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+  mutation,
+  query,
+  internalQuery,
+  internalMutation,
+} from "./_generated/server";
 import { confidenceValidator, sourceValidator } from "./schema";
 
 // ============================================
@@ -83,5 +88,52 @@ export const deleteByThread = mutation({
     for (const trend of trends) {
       await ctx.db.delete(trend._id);
     }
+  },
+});
+
+// ============================================
+// INTERNAL FUNCTIONS (for actions)
+// ============================================
+
+export const getByThreadInternal = internalQuery({
+  args: { threadId: v.id("threads") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("trends")
+      .withIndex("by_thread_and_order", (q) => q.eq("threadId", args.threadId))
+      .order("asc")
+      .collect();
+  },
+});
+
+export const createBatchInternal = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+    trends: v.array(
+      v.object({
+        title: v.string(),
+        summary: v.string(),
+        whyItMatters: v.string(),
+        confidence: confidenceValidator,
+        sources: v.array(sourceValidator),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const trendIds = [];
+    const now = Date.now();
+
+    for (let i = 0; i < args.trends.length; i++) {
+      const trend = args.trends[i];
+      const trendId = await ctx.db.insert("trends", {
+        threadId: args.threadId,
+        ...trend,
+        order: i,
+        createdAt: now,
+      });
+      trendIds.push(trendId);
+    }
+
+    return trendIds;
   },
 });

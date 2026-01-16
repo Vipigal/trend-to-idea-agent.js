@@ -1,5 +1,10 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import {
+  mutation,
+  query,
+  internalQuery,
+  internalMutation,
+} from "./_generated/server";
 import {
   MessageRoleEnum,
   MessageTypeEnum,
@@ -160,5 +165,29 @@ export const restart = mutation({
     });
 
     return { success: true };
+  },
+});
+
+// ============================================
+// INTERNAL FUNCTIONS (for actions)
+// ============================================
+
+export const getInternal = internalQuery({
+  args: { threadId: v.id("threads") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.threadId);
+  },
+});
+
+export const updateStatusInternal = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+    status: threadStatusValidator,
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.threadId, {
+      status: args.status,
+      updatedAt: Date.now(),
+    });
   },
 });
