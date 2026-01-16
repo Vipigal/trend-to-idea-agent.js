@@ -1,4 +1,4 @@
-import { BrandContext } from "./state";
+import { BrandContextState } from "./state";
 
 export const PLAN_RESEARCH_PROMPT = `You are a trend research analyst. Your job is to analyze a user's request and create a research plan.
 
@@ -84,7 +84,7 @@ const getPlatformGuidelines = (platform: string): string => {
 };
 
 export const getIdeasPrompt = (
-  brandContext: BrandContext,
+  brandContext: BrandContextState,
   platform: string
 ) => `You are a content strategist for ${brandContext.name}.
 

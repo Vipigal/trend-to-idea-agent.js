@@ -3,42 +3,17 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState, AgentStateType, HiltStatus } from "./state";
 import { ThreadStatusEnum } from "../schema";
-
-const planResearchNode = async (
-  state: AgentStateType
-): Promise<Partial<AgentStateType>> => {
-  console.log("[PLAN] Planning research for:", state.userPrompt);
-  return { currentStep: ThreadStatusEnum.Planning };
-};
-
-const searchNode = async (
-  state: AgentStateType
-): Promise<Partial<AgentStateType>> => {
-  console.log("[SEARCH] Searching with Tavily...");
-  return { currentStep: ThreadStatusEnum.Searching };
-};
-
-const synthesizeNode = async (
-  state: AgentStateType
-): Promise<Partial<AgentStateType>> => {
-  console.log("[SYNTHESIZE] Analyzing results...");
-  return { currentStep: ThreadStatusEnum.Synthesizing };
-};
-
-const awaitApprovalNode = async (
-  state: AgentStateType
-): Promise<Partial<AgentStateType>> => {
-  console.log("[AWAIT_APPROVAL] Waiting for user approval...");
-  return {
-    currentStep: ThreadStatusEnum.AwaitingApproval,
-    hitlStatus: HiltStatus.Pending,
-  };
-};
+import {
+  planResearchNode,
+  searchNode,
+  synthesizeNode,
+  awaitApprovalNode,
+} from "./nodes";
 
 const generateIdeasNode = async (
   state: AgentStateType
 ): Promise<Partial<AgentStateType>> => {
-  console.log("[GENERATE_IDEAS] Generating content ideas...");
+  console.log("[GENERATE_IDEAS] Placeholder - implement in CARD-06");
   return { currentStep: ThreadStatusEnum.GeneratingIdeas };
 };
 
@@ -49,7 +24,6 @@ const routeAfterApproval = (state: AgentStateType): string => {
     case HiltStatus.Approved:
       return "generate_ideas";
     case HiltStatus.Refine:
-      return "plan_research";
     case HiltStatus.Restart:
       return "plan_research";
     case HiltStatus.Pending:
