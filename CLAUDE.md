@@ -293,6 +293,8 @@ CARD-12 (Docker + Polish) ──────────────────
 
 ### Padrões de Código
 
+Evitar utilizar comentários! Apenas para partes de lógica de estado mais complexa.
+
 ```typescript
 // Convex: sempre tipar args e returns
 export const myMutation = mutation({

@@ -7,6 +7,10 @@ import {
   threadStatusValidator,
 } from "./schema";
 
+// ============================================
+// QUERIES
+// ============================================
+
 export const get = query({
   args: { threadId: v.id("threads") },
   handler: async (ctx, args) => {
@@ -34,6 +38,10 @@ export const getByStatus = query({
       .collect();
   },
 });
+
+// ============================================
+// MUTATIONS
+// ============================================
 
 export const create = mutation({
   args: { userPrompt: v.string() },
@@ -146,7 +154,7 @@ export const restart = mutation({
     }
 
     await ctx.db.patch(args.threadId, {
-      status: ThreadStatusEnum.Planning,
+      status: ThreadStatusEnum.Idle,
       refinementFeedback: undefined,
       updatedAt: Date.now(),
     });

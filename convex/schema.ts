@@ -52,6 +52,13 @@ export const confidenceValidator = v.union(
   ...Object.values(ConfidenceEnum).map(v.literal)
 );
 
+export const sourceValidator = v.object({
+  url: v.string(),
+  title: v.string(),
+  snippet: v.optional(v.string()),
+  publishedAt: v.optional(v.string()),
+});
+
 export enum PlatformEnum {
   LinkedIn = "linkedin",
   Twitter = "twitter",
@@ -108,14 +115,7 @@ export default defineSchema({
 
     confidence: confidenceValidator,
 
-    sources: v.array(
-      v.object({
-        url: v.string(),
-        title: v.string(),
-        snippet: v.optional(v.string()),
-        publishedAt: v.optional(v.string()),
-      })
-    ),
+    sources: v.array(sourceValidator),
 
     order: v.number(),
 
