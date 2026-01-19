@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { PanelRightOpen, PanelRightClose } from "lucide-react";
 import { THREAD_STATUS } from "../../lib/constants";
+import { ChatPanel } from "../chat/ChatPanel";
 
 interface MainLayoutProps {
   activeThreadId: Id<"threads"> | null;
@@ -13,6 +14,7 @@ interface MainLayoutProps {
 
 export function MainLayout({
   activeThreadId,
+  onThreadChange,
   sidebarOpen,
   onSidebarToggle,
 }: MainLayoutProps) {
@@ -60,40 +62,11 @@ export function MainLayout({
         </header>
 
         <main className="flex-1 overflow-hidden">
-          {activeThreadId ? (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              <p>Chat panel will render here (CARD-09)</p>
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-gray-400">
-              <div className="text-center">
-                <p className="text-xl mb-2">Welcome to Trend-to-Idea Agent</p>
-                <p className="text-sm">
-                  Enter a topic to research trending content
-                </p>
-              </div>
-            </div>
-          )}
+          <ChatPanel
+            threadId={activeThreadId}
+            onThreadCreated={onThreadChange}
+          />
         </main>
-
-        <footer className="border-t border-gray-200 bg-white p-4">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="What trends would you like to research?"
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled
-              />
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-                disabled
-              >
-                Research
-              </button>
-            </div>
-          </div>
-        </footer>
       </div>
 
       {shouldShowSidebar && (

@@ -1,5 +1,6 @@
 "use node";
 
+import '../lib/langfuse/instrumentation'
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -9,6 +10,8 @@ import {
   MessageRoleEnum,
   MessageTypeEnum,
 } from "../schema";
+import { getLangfuseHandler } from "../lib/langfuse/handler";
+import { langfuseSpanProcessor } from "../lib/langfuse/instrumentation";
 
 export const runResearchGraph = internalAction({
   args: {
@@ -55,7 +58,7 @@ export const runResearchGraph = internalAction({
         userPrompt: args.userPrompt,
         threadId: args.threadId,
         refinementFeedback: args.refinementFeedback || null,
-      });
+      }, {callbacks: [getLangfuseHandler(args.threadId)]});
 
       if (result.error) {
         await ctx.runMutation(internal.threads.updateStatusInternal, {
@@ -116,6 +119,9 @@ export const runResearchGraph = internalAction({
       });
 
       return { success: false, error: errorMessage };
+    }
+    finally{
+      await langfuseSpanProcessor.forceFlush();
     }
   },
 });
