@@ -2,20 +2,13 @@
 
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState, AgentStateType, HiltStatus } from "./state";
-import { ThreadStatusEnum } from "../schema";
 import {
   planResearchNode,
   searchNode,
   synthesizeNode,
   awaitApprovalNode,
+  generateIdeasNode,
 } from "./nodes";
-
-const generateIdeasNode = async (
-  state: AgentStateType
-): Promise<Partial<AgentStateType>> => {
-  console.log("[GENERATE_IDEAS] Placeholder - implement in CARD-06");
-  return { currentStep: ThreadStatusEnum.GeneratingIdeas };
-};
 
 const routeAfterApproval = (state: AgentStateType): string => {
   console.log("[ROUTER] HITL status:", state.hitlStatus);
