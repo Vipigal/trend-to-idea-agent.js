@@ -4,6 +4,7 @@ import { useThread } from "../../hooks/useThread";
 import { useResearchStream } from "../../hooks/useResearchStream";
 import { MessageList } from "./MessageList";
 import { ChatInput } from "./ChatInput";
+import { ApprovalPanel } from "../hitl/ApprovalPanel";
 import { THREAD_STATUS } from "../../lib/constants";
 
 interface ChatPanelProps {
@@ -49,7 +50,10 @@ export function ChatPanel({ threadId, onThreadCreated }: ChatPanelProps) {
     isStreaming ||
     thread?.status === THREAD_STATUS.PLANNING ||
     thread?.status === THREAD_STATUS.SEARCHING ||
-    thread?.status === THREAD_STATUS.SYNTHESIZING;
+    thread?.status === THREAD_STATUS.SYNTHESIZING ||
+    thread?.status === THREAD_STATUS.AWAITING_APPROVAL;
+
+  const showApproval = thread?.status === THREAD_STATUS.AWAITING_APPROVAL;
 
   return (
     <div className="h-full flex flex-col">
@@ -58,6 +62,16 @@ export function ChatPanel({ threadId, onThreadCreated }: ChatPanelProps) {
         streamingContent={streamingContent}
         isStreaming={isStreaming}
       />
+
+      {showApproval && threadId && (
+        <ApprovalPanel
+          threadId={threadId}
+          onApproved={() => {
+            // Ideas generation will be triggered
+            // Sidebar will auto-open via MainLayout
+          }}
+        />
+      )}
 
       {error && (
         <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-700 text-sm">
