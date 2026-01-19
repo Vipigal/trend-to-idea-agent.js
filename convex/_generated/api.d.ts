@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as actions_ideas from "../actions/ideas.js";
 import type * as actions_research from "../actions/research.js";
 import type * as agents_graph from "../agents/graph.js";
+import type * as agents_nodes_generateIdeas from "../agents/nodes/generateIdeas.js";
 import type * as agents_nodes_index from "../agents/nodes/index.js";
 import type * as agents_nodes_plan from "../agents/nodes/plan.js";
 import type * as agents_nodes_search from "../agents/nodes/search.js";
@@ -29,8 +31,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "actions/ideas": typeof actions_ideas;
   "actions/research": typeof actions_research;
   "agents/graph": typeof agents_graph;
+  "agents/nodes/generateIdeas": typeof agents_nodes_generateIdeas;
   "agents/nodes/index": typeof agents_nodes_index;
   "agents/nodes/plan": typeof agents_nodes_plan;
   "agents/nodes/search": typeof agents_nodes_search;
