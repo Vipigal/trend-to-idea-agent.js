@@ -45,6 +45,7 @@ export const synthesizeNode = async (
     const model = new ChatOpenAI({
       modelName: "gpt-4o",
       temperature: 0.4,
+      streaming: true,
     });
 
     const formattedResults = state.searchResults.map((result, index) => ({

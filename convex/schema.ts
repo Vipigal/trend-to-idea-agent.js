@@ -43,6 +43,21 @@ export const streamTypeValidator = v.union(
   ...Object.values(StreamTypeEnum).map(v.literal)
 );
 
+export enum StreamEventTypeEnum {
+  NodeStart = "node_start",
+  NodeEnd = "node_end",
+  Token = "token",
+  Plan = "plan",
+  SearchResults = "search_results",
+  Trend = "trend",
+  Idea = "idea",
+  Complete = "complete",
+  Error = "error",
+}
+export const streamEventTypeValidator = v.union(
+  ...Object.values(StreamEventTypeEnum).map(v.literal)
+);
+
 export enum ConfidenceEnum {
   High = "high",
   Medium = "medium",
@@ -162,4 +177,22 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_thread_type", ["threadId", "streamType"]),
+
+  streamEvents: defineTable({
+    threadId: v.id("threads"),
+
+    streamType: streamTypeValidator,
+
+    eventType: streamEventTypeValidator,
+
+    node: v.optional(v.string()),
+
+    data: v.optional(v.any()),
+
+    sequence: v.number(),
+
+    createdAt: v.number(),
+  })
+    .index("by_thread_type", ["threadId", "streamType"])
+    .index("by_thread_sequence", ["threadId", "streamType", "sequence"]),
 });

@@ -17,6 +17,7 @@ export const planResearchNode = async (
     const model = new ChatOpenAI({
       modelName: "gpt-4o",
       temperature: 0.3,
+      streaming: true,
     });
 
     let systemPrompt = PLAN_RESEARCH_PROMPT;

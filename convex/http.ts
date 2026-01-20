@@ -306,7 +306,10 @@ http.route({
       });
     }
 
-    if(platform && !Object.values(PlatformEnum).includes(platform as PlatformEnum)) {
+    if (
+      platform &&
+      !Object.values(PlatformEnum).includes(platform as PlatformEnum)
+    ) {
       return new Response(JSON.stringify({ error: "Invalid platform" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -317,7 +320,7 @@ http.route({
     if (platform) {
       ideas = await ctx.runQuery(internal.ideas.getByPlatformInternal, {
         threadId: threadId as Id<"threads">,
-        platform: platform as PlatformEnum
+        platform: platform as PlatformEnum,
       });
     } else {
       ideas = await ctx.runQuery(internal.ideas.getByThreadInternal, {

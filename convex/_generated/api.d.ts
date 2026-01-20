@@ -22,7 +22,9 @@ import type * as http from "../http.js";
 import type * as ideas from "../ideas.js";
 import type * as lib_langfuse_handler from "../lib/langfuse/handler.js";
 import type * as lib_langfuse_instrumentation from "../lib/langfuse/instrumentation.js";
+import type * as lib_streamHelpers from "../lib/streamHelpers.js";
 import type * as messages from "../messages.js";
+import type * as streamEvents from "../streamEvents.js";
 import type * as threads from "../threads.js";
 import type * as trends from "../trends.js";
 
@@ -47,7 +49,9 @@ declare const fullApi: ApiFromModules<{
   ideas: typeof ideas;
   "lib/langfuse/handler": typeof lib_langfuse_handler;
   "lib/langfuse/instrumentation": typeof lib_langfuse_instrumentation;
+  "lib/streamHelpers": typeof lib_streamHelpers;
   messages: typeof messages;
+  streamEvents: typeof streamEvents;
   threads: typeof threads;
   trends: typeof trends;
 }>;
