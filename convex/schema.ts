@@ -195,4 +195,39 @@ export default defineSchema({
   })
     .index("by_thread_type", ["threadId", "streamType"])
     .index("by_thread_sequence", ["threadId", "streamType", "sequence"]),
+
+  // ============================================
+  // CHECKPOINTS - LangGraph state persistence
+  // ============================================
+  checkpoints: defineTable({
+    threadId: v.string(),
+    checkpointId: v.string(),
+    parentCheckpointId: v.optional(v.string()),
+    checkpointNs: v.string(),
+    checkpoint: v.string(),
+    metadata: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_thread_checkpoint", ["threadId", "checkpointNs", "checkpointId"])
+    .index("by_thread_ns", ["threadId", "checkpointNs"]),
+
+  checkpointWrites: defineTable({
+    threadId: v.string(),
+    checkpointId: v.string(),
+    checkpointNs: v.string(),
+    taskId: v.string(),
+    idx: v.number(),
+    channel: v.string(),
+    value: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_checkpoint", ["threadId", "checkpointNs", "checkpointId"])
+    .index("by_checkpoint_task", [
+      "threadId",
+      "checkpointNs",
+      "checkpointId",
+      "taskId",
+      "idx",
+    ]),
 });

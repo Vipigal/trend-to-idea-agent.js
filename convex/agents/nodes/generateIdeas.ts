@@ -14,6 +14,7 @@ import { PlatformEnum, ThreadStatusEnum } from "../../schema";
 const model = new ChatOpenAI({
   modelName: "gpt-4o",
   temperature: 0.7,
+  streaming: true,
 });
 
 interface IdeaResponse {

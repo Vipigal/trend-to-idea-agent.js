@@ -191,3 +191,16 @@ export const updateStatusInternal = internalMutation({
     });
   },
 });
+
+export const setRefinementFeedbackInternal = internalMutation({
+  args: {
+    threadId: v.id("threads"),
+    feedback: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.threadId, {
+      refinementFeedback: args.feedback,
+      updatedAt: Date.now(),
+    });
+  },
+});

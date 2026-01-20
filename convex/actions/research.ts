@@ -4,7 +4,8 @@ import "../lib/langfuse/instrumentation";
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { graph } from "../agents/graph";
+import { workflow } from "../agents/graph";
+import { ConvexCheckpointer } from "../lib/ConvexCheckpointer";
 import {
   ThreadStatusEnum,
   MessageRoleEnum,
@@ -93,6 +94,9 @@ export const runResearchGraph = internalAction({
         }
       };
 
+      const checkpointer = new ConvexCheckpointer(ctx);
+      const graph = workflow.compile({ checkpointer });
+
       const eventStream = await graph.stream(
         {
           userPrompt: args.userPrompt,
@@ -100,6 +104,9 @@ export const runResearchGraph = internalAction({
           refinementFeedback: args.refinementFeedback || null,
         },
         {
+          configurable: {
+            thread_id: args.threadId,
+          },
           streamMode: ["messages", "updates"],
           callbacks: [getLangfuseHandler(args.threadId)],
         }

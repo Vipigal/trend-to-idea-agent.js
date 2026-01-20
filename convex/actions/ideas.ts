@@ -3,10 +3,14 @@
 import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
+import { Doc } from "../_generated/dataModel";
 import { generateIdeasStreaming } from "../agents/nodes/generateIdeas";
 import { TrendState, BrandContextState } from "../agents/state";
-import { ThreadStatusEnum, PlatformEnum } from "../schema";
+import {
+  ThreadStatusEnum,
+  StreamTypeEnum,
+  StreamEventTypeEnum,
+} from "../schema";
 
 const DEFAULT_BRAND_CONTEXT: BrandContextState = {
   name: "Gallium",
@@ -31,31 +35,24 @@ const DEFAULT_BRAND_CONTEXT: BrandContextState = {
   ],
 };
 
-export const runIdeasGeneration = internalAction({
+export const generateIdeasWithStreaming = internalAction({
   args: {
     threadId: v.id("threads"),
   },
   handler: async (ctx, args) => {
-    console.log(
-      "[IDEAS_ACTION] Starting idea generation for thread:",
-      args.threadId
-    );
+    const { threadId } = args;
+    console.log(`[IDEAS] Starting idea generation for thread ${threadId}`);
 
     try {
       const trends = await ctx.runQuery(internal.trends.getByThreadInternal, {
-        threadId: args.threadId,
+        threadId,
       });
 
       if (!trends || trends.length === 0) {
         throw new Error("No trends found for this thread");
       }
 
-      await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId: args.threadId,
-        status: ThreadStatusEnum.GeneratingIdeas,
-      });
-
-      const trendData: TrendState[] = trends.map((t) => ({
+      const trendData: TrendState[] = trends.map((t: Doc<"trends">) => ({
         title: t.title,
         summary: t.summary,
         whyItMatters: t.whyItMatters,
@@ -63,58 +60,159 @@ export const runIdeasGeneration = internalAction({
         sources: t.sources,
       }));
 
-      const allIdeas: Array<{
-        trendId: Id<"trends">;
-        platform: PlatformEnum;
-        hook: string;
-        format: string;
-        angle: string;
-        description: string;
-      }> = [];
+      await ctx.runMutation(internal.ideas.deleteByThreadInternal, { threadId });
+
+      await ctx.runMutation(internal.streamEvents.clearByThread, {
+        threadId,
+        streamType: StreamTypeEnum.Ideas,
+      });
+
+      await ctx.runMutation(internal.threads.updateStatusInternal, {
+        threadId,
+        status: ThreadStatusEnum.GeneratingIdeas,
+      });
+
+      await ctx.runMutation(internal.streamEvents.createInternal, {
+        threadId,
+        streamType: StreamTypeEnum.Ideas,
+        eventType: StreamEventTypeEnum.NodeStart,
+        node: "generate_ideas",
+        data: {
+          message: "Starting idea generation...",
+          trendsCount: trends.length,
+          platforms: ["linkedin", "twitter", "tiktok"],
+        },
+      });
+
+      let ideasCount = 0;
 
       for await (const event of generateIdeasStreaming(
         trendData,
         DEFAULT_BRAND_CONTEXT
       )) {
-        if (event.type === "idea" && event.idea) {
-          const trendId = trends[event.idea.trendIndex]._id;
-          allIdeas.push({
-            trendId,
-            platform: event.idea.platform,
-            hook: event.idea.hook,
-            format: event.idea.format,
-            angle: event.idea.angle,
-            description: event.idea.description,
-          });
+        switch (event.type) {
+          case "status":
+            await ctx.runMutation(internal.streamEvents.createInternal, {
+              threadId,
+              streamType: StreamTypeEnum.Ideas,
+              eventType: StreamEventTypeEnum.Token,
+              node: "generate_ideas",
+              data: {
+                message: event.message,
+                platform: event.platform,
+                trendIndex: event.trendIndex,
+              },
+            });
+            break;
+
+          case "idea":
+            if (event.idea) {
+              ideasCount++;
+
+              const trendDoc = trends[event.idea.trendIndex];
+              if (!trendDoc) {
+                console.warn(
+                  `[IDEAS] Trend not found for index ${event.idea.trendIndex}`
+                );
+                continue;
+              }
+
+              const ideaId = await ctx.runMutation(
+                internal.ideas.createInternal,
+                {
+                  threadId,
+                  trendId: trendDoc._id,
+                  platform: event.idea.platform,
+                  hook: event.idea.hook,
+                  format: event.idea.format,
+                  angle: event.idea.angle,
+                  description: event.idea.description,
+                }
+              );
+
+              await ctx.runMutation(internal.streamEvents.createInternal, {
+                threadId,
+                streamType: StreamTypeEnum.Ideas,
+                eventType: StreamEventTypeEnum.Idea,
+                node: "generate_ideas",
+                data: {
+                  ideaId,
+                  platform: event.idea.platform,
+                  trendIndex: event.idea.trendIndex,
+                  trendTitle: trendDoc.title,
+                  hook: event.idea.hook,
+                  format: event.idea.format,
+                  angle: event.idea.angle,
+                  description: event.idea.description,
+                  ideasCount,
+                },
+              });
+
+              console.log(
+                `[IDEAS] Saved idea ${ideasCount}: "${event.idea.hook.substring(0, 40)}..."`
+              );
+            }
+            break;
+
+          case "error":
+            await ctx.runMutation(internal.streamEvents.createInternal, {
+              threadId,
+              streamType: StreamTypeEnum.Ideas,
+              eventType: StreamEventTypeEnum.Error,
+              node: "generate_ideas",
+              data: {
+                message: event.message,
+              },
+            });
+            break;
+
+          case "complete":
+            break;
         }
       }
 
-      for (const idea of allIdeas) {
-        await ctx.runMutation(internal.ideas.createInternal, {
-          threadId: args.threadId,
-          trendId: idea.trendId,
-          platform: idea.platform,
-          hook: idea.hook,
-          format: idea.format,
-          angle: idea.angle,
-          description: idea.description,
-        });
-      }
+      await ctx.runMutation(internal.streamEvents.createInternal, {
+        threadId,
+        streamType: StreamTypeEnum.Ideas,
+        eventType: StreamEventTypeEnum.NodeEnd,
+        node: "generate_ideas",
+      });
+
+      await ctx.runMutation(internal.streamEvents.createInternal, {
+        threadId,
+        streamType: StreamTypeEnum.Ideas,
+        eventType: StreamEventTypeEnum.Complete,
+        data: {
+          ideasCount,
+          message: `Generated ${ideasCount} content ideas`,
+        },
+      });
 
       await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId: args.threadId,
+        threadId,
         status: ThreadStatusEnum.Completed,
       });
 
+      console.log(`[IDEAS] Completed. Generated ${ideasCount} ideas.`);
+
       return {
         success: true,
-        ideasCount: allIdeas.length,
+        ideasCount,
       };
     } catch (error) {
-      console.error("[IDEAS_ACTION] Error:", error);
+      console.error("[IDEAS] Error:", error);
+
+      await ctx.runMutation(internal.streamEvents.createInternal, {
+        threadId,
+        streamType: StreamTypeEnum.Ideas,
+        eventType: StreamEventTypeEnum.Error,
+        data: {
+          message: error instanceof Error ? error.message : "Unknown error",
+        },
+      });
 
       await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId: args.threadId,
+        threadId,
         status: ThreadStatusEnum.Error,
       });
 
@@ -130,7 +228,10 @@ export const startIdeasGeneration = action({
   args: {
     threadId: v.id("threads"),
   },
-  handler: async (ctx, args) => {
+  handler: async (
+    ctx,
+    args
+  ): Promise<{ started: boolean; message: string; trendsCount: number }> => {
     const thread = await ctx.runQuery(internal.threads.getInternal, {
       threadId: args.threadId,
     });
@@ -142,24 +243,70 @@ export const startIdeasGeneration = action({
     const validStatuses = [
       ThreadStatusEnum.GeneratingIdeas,
       ThreadStatusEnum.AwaitingApproval,
+      ThreadStatusEnum.Completed,
     ];
 
     if (!validStatuses.includes(thread.status as ThreadStatusEnum)) {
-      throw new Error(`Invalid thread status: ${thread.status}`);
+      throw new Error(
+        `Cannot generate ideas in status: ${thread.status}. Expected one of: ${validStatuses.join(", ")}`
+      );
     }
 
-    await ctx.runMutation(internal.ideas.deleteByThreadInternal, {
-      threadId: args.threadId,
-    });
-
-    await ctx.scheduler.runAfter(
-      0,
-      internal.actions.ideas.runIdeasGeneration,
+    const trendsResult = await ctx.runQuery(
+      internal.trends.getByThreadInternal,
       {
         threadId: args.threadId,
       }
     );
 
-    return { started: true };
+    if (!trendsResult || trendsResult.length === 0) {
+      throw new Error("No trends found. Run research first.");
+    }
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.ideas.generateIdeasWithStreaming,
+      {
+        threadId: args.threadId,
+      }
+    );
+
+    return {
+      started: true,
+      message: "Ideas generation started",
+      trendsCount: trendsResult.length,
+    };
+  },
+});
+
+export const regenerateIdeas = action({
+  args: {
+    threadId: v.id("threads"),
+  },
+  handler: async (ctx, args) => {
+    const thread = await ctx.runQuery(internal.threads.getInternal, {
+      threadId: args.threadId,
+    });
+
+    if (!thread) {
+      throw new Error("Thread not found");
+    }
+
+    if (thread.status !== ThreadStatusEnum.Completed) {
+      throw new Error(`Cannot regenerate ideas in status: ${thread.status}`);
+    }
+
+    await ctx.scheduler.runAfter(
+      0,
+      internal.actions.ideas.generateIdeasWithStreaming,
+      {
+        threadId: args.threadId,
+      }
+    );
+
+    return {
+      started: true,
+      message: "Ideas regeneration started",
+    };
   },
 });

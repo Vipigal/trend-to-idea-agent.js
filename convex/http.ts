@@ -219,7 +219,7 @@ http.route({
           );
 
           const result = await ctx.runAction(
-            internal.actions.ideas.runIdeasGeneration,
+            internal.actions.ideas.generateIdeasWithStreaming,
             {
               threadId: threadId as Id<"threads">,
             }

@@ -137,3 +137,17 @@ export const createBatchInternal = internalMutation({
     return trendIds;
   },
 });
+
+export const deleteByThreadInternal = internalMutation({
+  args: { threadId: v.id("threads") },
+  handler: async (ctx, args) => {
+    const trends = await ctx.db
+      .query("trends")
+      .withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+      .collect();
+
+    for (const trend of trends) {
+      await ctx.db.delete(trend._id);
+    }
+  },
+});
