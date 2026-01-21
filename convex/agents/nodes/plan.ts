@@ -13,18 +13,15 @@ const ResearchPlanSchema = z.object({
     .describe("2-5 specific search keywords to use"),
   timeframe: z
     .enum(["past_day", "past_week", "past_month", "past_year"])
-    .default("past_week")
     .describe("Timeframe for the search"),
   domain: z
     .string()
     .nullable()
-    .optional()
-    .describe("Industry or domain to focus on"),
+    .describe("Industry or domain to focus on, or null if not specified"),
   region: z
     .string()
     .nullable()
-    .optional()
-    .describe("Geographic region if specified"),
+    .describe("Geographic region if specified, or null if not specified"),
 });
 
 type ResearchPlan = z.infer<typeof ResearchPlanSchema>;
