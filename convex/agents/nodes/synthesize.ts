@@ -2,23 +2,44 @@
 
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { z } from "zod";
 import { AgentStateType, TrendState } from "../state";
 import { SYNTHESIZE_PROMPT } from "../prompts";
 import { ConfidenceEnum, ThreadStatusEnum } from "../../schema";
 
-interface SynthesisResponseTrend {
-  title: string;
-  summary: string;
-  whyItMatters: string;
-  confidence: "high" | "medium" | "low";
-  sourceIndices: number[];
-}
+const TrendSchema = z.object({
+  title: z.string().describe("Clear, specific trend title"),
+  summary: z.string().describe("1-2 sentence summary of the trend"),
+  whyItMatters: z.string().describe("Business/marketing implications"),
+  confidence: z
+    .enum(["high", "medium", "low"])
+    .describe("Confidence level based on source quality"),
+  sourceIndices: z
+    .array(z.number())
+    .describe("Indices of supporting sources from the search results"),
+});
 
-interface SynthesisResponse {
-  trends: SynthesisResponseTrend[];
-}
+const SynthesisResponseSchema = z.object({
+  trends: z
+    .array(TrendSchema)
+    .describe("Array of 5-8 distinct trends identified from search results"),
+});
 
-const mapConfidence = (confidence: "high" | "medium" | "low"): ConfidenceEnum => {
+type SynthesisResponse = z.infer<typeof SynthesisResponseSchema>;
+
+const baseModel = new ChatOpenAI({
+  modelName: "gpt-4o",
+  temperature: 0.4,
+});
+
+const structuredModel = baseModel.withStructuredOutput(SynthesisResponseSchema, {
+  name: "synthesize_trends",
+  strict: true,
+});
+
+const mapConfidence = (
+  confidence: "high" | "medium" | "low"
+): ConfidenceEnum => {
   switch (confidence) {
     case "high":
       return ConfidenceEnum.High;
@@ -42,12 +63,6 @@ export const synthesizeNode = async (
   }
 
   try {
-    const model = new ChatOpenAI({
-      modelName: "gpt-4o",
-      temperature: 0.4,
-      streaming: true,
-    });
-
     const formattedResults = state.searchResults.map((result, index) => ({
       index,
       title: result.title,
@@ -56,21 +71,12 @@ export const synthesizeNode = async (
       publishedDate: result.publishedDate,
     }));
 
-    const response = await model.invoke([
+    const synthesis = (await structuredModel.invoke([
       new SystemMessage(SYNTHESIZE_PROMPT),
       new HumanMessage(
         `Search results:\n${JSON.stringify(formattedResults, null, 2)}\n\nUser's original request: ${state.userPrompt}`
       ),
-    ]);
-
-    const content = response.content as string;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      throw new Error("Failed to extract JSON from LLM response");
-    }
-
-    const synthesis: SynthesisResponse = JSON.parse(jsonMatch[0]);
+    ])) as SynthesisResponse;
 
     const trends: TrendState[] = synthesis.trends.map((t) => ({
       title: t.title,

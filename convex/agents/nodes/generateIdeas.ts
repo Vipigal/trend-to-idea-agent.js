@@ -2,6 +2,7 @@
 
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { z } from "zod";
 import {
   AgentStateType,
   IdeaState,
@@ -11,20 +12,30 @@ import {
 import { getIdeasPrompt } from "../prompts";
 import { PlatformEnum, ThreadStatusEnum } from "../../schema";
 
-const model = new ChatOpenAI({
-  modelName: "gpt-4o",
-  temperature: 0.7,
-  streaming: true,
+const IdeaSchema = z.object({
+  hook: z.string().describe("The opening line that stops the scroll"),
+  format: z
+    .enum(["post", "thread", "video", "carousel", "story", "reel", "script"])
+    .describe("Content format"),
+  angle: z.string().describe("Why this specific take will resonate"),
+  description: z.string().describe("What the content will cover"),
 });
 
-interface IdeaResponse {
-  ideas: Array<{
-    hook: string;
-    format: string;
-    angle: string;
-    description: string;
-  }>;
-}
+const IdeasResponseSchema = z.object({
+  ideas: z.array(IdeaSchema).describe("Array of 2-3 content ideas"),
+});
+
+type IdeasResponse = z.infer<typeof IdeasResponseSchema>;
+
+const baseModel = new ChatOpenAI({
+  modelName: "gpt-4o",
+  temperature: 0.7,
+});
+
+const structuredModel = baseModel.withStructuredOutput(IdeasResponseSchema, {
+  name: "generate_content_ideas",
+  strict: true,
+});
 
 const PLATFORMS: PlatformEnum[] = [
   PlatformEnum.LinkedIn,
@@ -60,42 +71,40 @@ export const generateIdeasNode = async (
         const systemPrompt = getIdeasPrompt(state.brandContext, platform);
 
         const trendContext = `
-          Trend: ${trend.title}
-          Summary: ${trend.summary}
-          Why it matters: ${trend.whyItMatters}
-          Supporting sources:
-          ${trend.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n")}
-        `;
+Trend: ${trend.title}
+Summary: ${trend.summary}
+Why it matters: ${trend.whyItMatters}
+Supporting sources:
+${trend.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n")}
+`;
 
-        const response = await model.invoke([
-          new SystemMessage(systemPrompt),
-          new HumanMessage(
-            `Generate 2-3 ${platform} content ideas for this trend:\n\n${trendContext}`
-          ),
-        ]);
+        try {
+          const response = (await structuredModel.invoke([
+            new SystemMessage(systemPrompt),
+            new HumanMessage(
+              `Generate 2-3 ${platform} content ideas for this trend:\n\n${trendContext}`
+            ),
+          ])) as IdeasResponse;
 
-        const content = response.content as string;
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-        if (jsonMatch) {
-          try {
-            const parsed: IdeaResponse = JSON.parse(jsonMatch[0]);
-
-            for (const idea of parsed.ideas) {
-              allIdeas.push({
-                trendIndex,
-                platform,
-                hook: idea.hook,
-                format: idea.format,
-                angle: idea.angle,
-                description: idea.description,
-              });
-            }
-          } catch (parseError) {
-            console.warn(
-              `[GENERATE_IDEAS] Failed to parse ${platform} ideas for trend ${trendIndex}`
-            );
+          for (const idea of response.ideas) {
+            allIdeas.push({
+              trendIndex,
+              platform,
+              hook: idea.hook,
+              format: idea.format,
+              angle: idea.angle,
+              description: idea.description,
+            });
           }
+
+          console.log(
+            `[GENERATE_IDEAS] Generated ${response.ideas.length} ideas for ${platform}`
+          );
+        } catch (parseError) {
+          console.error(
+            `[GENERATE_IDEAS] Failed to generate ${platform} ideas for trend ${trendIndex}:`,
+            parseError
+          );
         }
       }
     }
@@ -157,41 +166,43 @@ Summary: ${trend.summary}
 Why it matters: ${trend.whyItMatters}
 `;
 
-        const response = await model.invoke([
-          new SystemMessage(systemPrompt),
-          new HumanMessage(
-            `Generate 2-3 ${platform} content ideas for this trend:\n\n${trendContext}`
-          ),
-        ]);
+        try {
+          const response = (await structuredModel.invoke([
+            new SystemMessage(systemPrompt),
+            new HumanMessage(
+              `Generate 2-3 ${platform} content ideas for this trend:\n\n${trendContext}`
+            ),
+          ])) as IdeasResponse;
 
-        const content = response.content as string;
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
+          for (const ideaData of response.ideas) {
+            const idea: IdeaState = {
+              trendIndex,
+              platform,
+              hook: ideaData.hook,
+              format: ideaData.format,
+              angle: ideaData.angle,
+              description: ideaData.description,
+            };
 
-        if (jsonMatch) {
-          try {
-            const parsed: IdeaResponse = JSON.parse(jsonMatch[0]);
-
-            for (const ideaData of parsed.ideas) {
-              const idea: IdeaState = {
-                trendIndex,
-                platform,
-                hook: ideaData.hook,
-                format: ideaData.format,
-                angle: ideaData.angle,
-                description: ideaData.description,
-              };
-
-              totalIdeas++;
-              yield {
-                type: "idea",
-                platform,
-                trendIndex,
-                idea,
-              };
-            }
-          } catch (parseError) {
-            console.warn(`Failed to parse ideas`);
+            totalIdeas++;
+            yield {
+              type: "idea",
+              platform,
+              trendIndex,
+              idea,
+            };
           }
+        } catch (error) {
+          console.error(
+            `[GENERATE_IDEAS_STREAM] Failed for ${platform}:`,
+            error
+          );
+          yield {
+            type: "status",
+            message: `Failed to generate ${platform} ideas, continuing...`,
+            platform,
+            trendIndex,
+          };
         }
       }
     }

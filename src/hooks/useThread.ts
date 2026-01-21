@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -20,9 +20,11 @@ export function useThread(threadId: Id<"threads"> | null) {
 
   const createThread = useMutation(api.threads.create);
   const updateStatus = useMutation(api.threads.updateStatus);
-  const approve = useMutation(api.threads.approve);
-  const refine = useMutation(api.threads.refine);
-  const restart = useMutation(api.threads.restart);
+
+  const approve = useAction(api.actions.hitl.approve);
+  const refine = useAction(api.actions.hitl.refine);
+  const restart = useAction(api.actions.hitl.restart);
+  const startResearch = useAction(api.actions.research.startResearch);
 
   return {
     thread,
@@ -33,6 +35,7 @@ export function useThread(threadId: Id<"threads"> | null) {
     approve,
     refine,
     restart,
+    startResearch,
     isLoading: thread === undefined,
   };
 }

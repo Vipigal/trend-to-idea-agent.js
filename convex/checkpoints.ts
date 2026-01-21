@@ -1,7 +1,6 @@
 // convex/checkpoints.ts
 import { v } from "convex/values";
 import {
-  mutation,
   query,
   internalMutation,
   internalQuery,

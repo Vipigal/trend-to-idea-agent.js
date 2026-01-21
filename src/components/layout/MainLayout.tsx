@@ -1,9 +1,11 @@
+import { useEffect, useRef } from "react";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { PanelRightOpen, PanelRightClose } from "lucide-react";
 import { THREAD_STATUS } from "../../lib/constants";
 import { ChatPanel } from "../chat/ChatPanel";
+import { Sidebar } from "./Sidebar";
 
 interface MainLayoutProps {
   activeThreadId: Id<"threads"> | null;
@@ -22,10 +24,21 @@ export function MainLayout({
     api.threads.get,
     activeThreadId ? { threadId: activeThreadId } : "skip"
   );
+  const prevStatusRef = useRef<string | undefined>(undefined);
 
   const shouldShowSidebar =
     thread?.status === THREAD_STATUS.GENERATING_IDEAS ||
     thread?.status === THREAD_STATUS.COMPLETED;
+
+  useEffect(() => {
+    if (
+      thread?.status === THREAD_STATUS.GENERATING_IDEAS &&
+      prevStatusRef.current !== THREAD_STATUS.GENERATING_IDEAS
+    ) {
+      onSidebarToggle(true);
+    }
+    prevStatusRef.current = thread?.status;
+  }, [thread?.status, onSidebarToggle]);
 
   return (
     <div className="flex h-full">
@@ -69,21 +82,12 @@ export function MainLayout({
         </main>
       </div>
 
-      {shouldShowSidebar && (
-        <aside
-          className={`fixed right-0 top-0 h-full w-96 bg-white border-l border-gray-200 transform transition-transform duration-300 ${
-            sidebarOpen ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
-          <div className="h-full flex flex-col">
-            <div className="h-14 border-b border-gray-200 flex items-center px-4">
-              <h2 className="font-semibold text-gray-900">Content Ideas</h2>
-            </div>
-            <div className="flex-1 flex items-center justify-center text-gray-400">
-              <p>Ideas sidebar will render here (CARD-11)</p>
-            </div>
-          </div>
-        </aside>
+      {shouldShowSidebar && activeThreadId && (
+        <Sidebar
+          threadId={activeThreadId}
+          isOpen={sidebarOpen}
+          onClose={() => onSidebarToggle(false)}
+        />
       )}
     </div>
   );

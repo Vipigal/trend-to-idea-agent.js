@@ -1,9 +1,7 @@
 import { v } from "convex/values";
-import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
+import { query, internalQuery, internalMutation } from "./_generated/server";
 import {
-  StreamTypeEnum,
   streamTypeValidator,
-  StreamEventTypeEnum,
   streamEventTypeValidator,
 } from "./schema";
 

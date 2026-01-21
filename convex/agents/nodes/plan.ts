@@ -2,9 +2,42 @@
 
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { z } from "zod";
 import { AgentStateType, ResearchPlanState } from "../state";
 import { PLAN_RESEARCH_PROMPT, REFINEMENT_PROMPT } from "../prompts";
 import { ThreadStatusEnum } from "../../schema";
+
+const ResearchPlanSchema = z.object({
+  keywords: z
+    .array(z.string())
+    .describe("2-5 specific search keywords to use"),
+  timeframe: z
+    .enum(["past_day", "past_week", "past_month", "past_year"])
+    .default("past_week")
+    .describe("Timeframe for the search"),
+  domain: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Industry or domain to focus on"),
+  region: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Geographic region if specified"),
+});
+
+type ResearchPlan = z.infer<typeof ResearchPlanSchema>;
+
+const baseModel = new ChatOpenAI({
+  modelName: "gpt-4o",
+  temperature: 0.3,
+});
+
+const structuredModel = baseModel.withStructuredOutput(ResearchPlanSchema, {
+  name: "create_research_plan",
+  strict: true,
+});
 
 export const planResearchNode = async (
   state: AgentStateType
@@ -14,35 +47,28 @@ export const planResearchNode = async (
   console.log("[PLAN] Refinement feedback:", state.refinementFeedback);
 
   try {
-    const model = new ChatOpenAI({
-      modelName: "gpt-4o",
-      temperature: 0.3,
-      streaming: true,
-    });
-
     let systemPrompt = PLAN_RESEARCH_PROMPT;
     let userContent = state.userPrompt;
 
     if (state.refinementFeedback && state.researchPlan) {
-      systemPrompt = REFINEMENT_PROMPT
-        .replace("{previousKeywords}", state.researchPlan.keywords.join(", "))
-        .replace("{feedback}", state.refinementFeedback);
+      systemPrompt = REFINEMENT_PROMPT.replace(
+        "{previousKeywords}",
+        state.researchPlan.keywords.join(", ")
+      ).replace("{feedback}", state.refinementFeedback);
       userContent = `Original request: ${state.userPrompt}\nFeedback: ${state.refinementFeedback}`;
     }
 
-    const response = await model.invoke([
+    const planResult = (await structuredModel.invoke([
       new SystemMessage(systemPrompt),
       new HumanMessage(userContent),
-    ]);
+    ])) as ResearchPlan;
 
-    const content = response.content as string;
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      throw new Error("Failed to extract JSON from LLM response");
-    }
-
-    const plan: ResearchPlanState = JSON.parse(jsonMatch[0]);
+    const plan: ResearchPlanState = {
+      keywords: planResult.keywords,
+      timeframe: planResult.timeframe || "past_week",
+      domain: planResult.domain || undefined,
+      region: planResult.region || undefined,
+    };
 
     console.log("[PLAN] Generated plan:", plan);
 
