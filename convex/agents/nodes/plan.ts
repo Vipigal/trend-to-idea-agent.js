@@ -29,6 +29,7 @@ type ResearchPlan = z.infer<typeof ResearchPlanSchema>;
 const baseModel = new ChatOpenAI({
   modelName: "gpt-4o",
   temperature: 0.3,
+  streaming: true,
 });
 
 const structuredModel = baseModel.withStructuredOutput(ResearchPlanSchema, {

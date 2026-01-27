@@ -30,6 +30,7 @@ type IdeasResponse = z.infer<typeof IdeasResponseSchema>;
 const baseModel = new ChatOpenAI({
   modelName: "gpt-4o",
   temperature: 0.7,
+  streaming: true,
 });
 
 const structuredModel = baseModel.withStructuredOutput(IdeasResponseSchema, {

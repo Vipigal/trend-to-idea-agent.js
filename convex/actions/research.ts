@@ -22,8 +22,16 @@ import {
   isMainGraphNode,
 } from "../lib/streamHelpers";
 
+interface ToolCallChunk {
+  name?: string;
+  args?: string;
+  id?: string;
+  index?: number;
+}
+
 interface MessageChunk {
   content?: string;
+  tool_call_chunks?: ToolCallChunk[];
 }
 
 interface MessageMetadata {
@@ -150,11 +158,23 @@ export const runResearchGraph = internalAction({
             }
           }
 
-          if (messageChunk?.content && typeof messageChunk.content === "string") {
-            tokenBuffer += messageChunk.content;
-
+          const textContent = messageChunk?.content;
+          if (textContent && typeof textContent === "string") {
+            tokenBuffer += textContent;
             if (tokenBuffer.length >= 10) {
               await flushTokenBuffer();
+            }
+          }
+
+          const toolChunks = messageChunk?.tool_call_chunks;
+          if (toolChunks && toolChunks.length > 0) {
+            for (const toolChunk of toolChunks) {
+              if (toolChunk.args) {
+                tokenBuffer += toolChunk.args;
+                if (tokenBuffer.length >= 50) {
+                  await flushTokenBuffer();
+                }
+              }
             }
           }
         } else if (streamMode === "updates") {

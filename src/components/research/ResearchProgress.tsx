@@ -144,21 +144,21 @@ export function ResearchProgress({
         </div>
       )}
 
-      {/* Token Stream (thinking) */}
-      {tokens && isStreaming && (
+      {/* Activity indicator */}
+      {tokens && isStreaming && currentNode && (
         <div className="pl-8">
-          <div className="text-xs text-gray-400 mb-1">Thinking...</div>
-          <div className="text-sm text-gray-600 bg-white p-2 rounded border border-gray-100 max-h-24 overflow-y-auto font-mono text-xs">
-            {tokens.slice(-500)}
-            <span className="animate-pulse">|</span>
+          <div className="flex items-center gap-2 text-xs text-gray-400">
+            <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+            <span>Processing{currentNode === "plan_research" ? " research plan" : currentNode === "synthesize" ? " trends" : ""}...</span>
           </div>
         </div>
       )}
 
       {/* Progress Steps */}
-      {isStreaming && (
-        <div className="flex items-center gap-2 pl-8 pt-2 border-t border-gray-200">
-          {["plan_research", "search", "synthesize"].map((step, index) => {
+      {(isStreaming || isComplete) && (
+        <div className="flex items-center gap-1 pl-8 pt-2 border-t border-gray-200">
+          {(["plan_research", "search", "synthesize"] as const).map((step, index) => {
+            const stepLabels = { plan_research: "Plan", search: "Search", synthesize: "Analyze" } as const;
             const isCurrentStep = step === currentNode;
             const isPastStep =
               currentNode &&
@@ -166,20 +166,31 @@ export function ResearchProgress({
                 index;
 
             return (
-              <div key={step} className="flex items-center">
-                <div
-                  className={`w-2 h-2 rounded-full transition-colors ${
+              <div key={step} className="flex items-center gap-1">
+                <div className="flex items-center gap-1">
+                  <div
+                    className={`w-2 h-2 rounded-full transition-colors ${
+                      isCurrentStep
+                        ? "bg-blue-500 animate-pulse"
+                        : isPastStep || isComplete
+                          ? "bg-green-500"
+                          : "bg-gray-300"
+                    }`}
+                  />
+                  <span className={`text-xs ${
                     isCurrentStep
-                      ? "bg-blue-500 animate-pulse"
-                      : isPastStep
-                        ? "bg-green-500"
-                        : "bg-gray-300"
-                  }`}
-                />
+                      ? "text-blue-600 font-medium"
+                      : isPastStep || isComplete
+                        ? "text-green-600"
+                        : "text-gray-400"
+                  }`}>
+                    {stepLabels[step]}
+                  </span>
+                </div>
                 {index < 2 && (
                   <div
-                    className={`w-8 h-0.5 ${
-                      isPastStep ? "bg-green-300" : "bg-gray-200"
+                    className={`w-6 h-0.5 ${
+                      isPastStep || isComplete ? "bg-green-300" : "bg-gray-200"
                     }`}
                   />
                 )}
