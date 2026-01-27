@@ -27,7 +27,7 @@ export interface TrendState {
 }
 
 export interface IdeaState {
-  trendIndex: number;
+  trendIndices: number[];
   platform: PlatformEnum;
   hook: string;
   format: string;

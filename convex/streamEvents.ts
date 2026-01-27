@@ -40,6 +40,21 @@ export const getByThread = query({
   },
 });
 
+export const getByThreadInternal = internalQuery({
+  args: {
+    threadId: v.id("threads"),
+    streamType: streamTypeValidator,
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("streamEvents")
+      .withIndex("by_thread_sequence", (q) =>
+        q.eq("threadId", args.threadId).eq("streamType", args.streamType)
+      )
+      .collect();
+  },
+});
+
 export const getLatestSequence = internalQuery({
   args: {
     threadId: v.id("threads"),

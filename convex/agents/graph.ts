@@ -7,7 +7,6 @@ import {
   searchNode,
   synthesizeNode,
   awaitApprovalNode,
-  generateIdeasNode,
 } from "./nodes";
 
 const routeAfterApproval = (state: AgentStateType): string => {
@@ -15,7 +14,7 @@ const routeAfterApproval = (state: AgentStateType): string => {
 
   switch (state.hitlStatus) {
     case HiltStatus.Approved:
-      return "generate_ideas";
+      return END;
     case HiltStatus.Refine:
     case HiltStatus.Restart:
       return "plan_research";
@@ -30,17 +29,14 @@ const workflow = new StateGraph(AgentState)
   .addNode("search", searchNode)
   .addNode("synthesize", synthesizeNode)
   .addNode("await_approval", awaitApprovalNode)
-  .addNode("generate_ideas", generateIdeasNode)
   .addEdge(START, "plan_research")
   .addEdge("plan_research", "search")
   .addEdge("search", "synthesize")
   .addEdge("synthesize", "await_approval")
   .addConditionalEdges("await_approval", routeAfterApproval, {
     plan_research: "plan_research",
-    generate_ideas: "generate_ideas",
     [END]: END,
-  })
-  .addEdge("generate_ideas", END);
+  });
 
 export const graph = workflow.compile();
 

@@ -1,13 +1,13 @@
 import type { Platform } from "../../lib/constants";
 import { PLATFORMS } from "../../lib/constants";
-import { Linkedin, Twitter, Video } from "lucide-react";
+import { Linkedin, Twitter, Video, Check } from "lucide-react";
+import type { PlatformStatus } from "../../hooks/useIdeasStream";
 
 interface PlatformTabsProps {
   activePlatform: Platform;
   onPlatformChange: (platform: Platform) => void;
   counts: Record<Platform, number>;
-  isStreaming?: boolean;
-  currentPlatform?: Platform | null;
+  platformStatuses: Record<Platform, PlatformStatus>;
 }
 
 const platformIcons: Record<Platform, React.ReactNode> = {
@@ -26,14 +26,13 @@ export function PlatformTabs({
   activePlatform,
   onPlatformChange,
   counts,
-  isStreaming = false,
-  currentPlatform = null,
+  platformStatuses,
 }: PlatformTabsProps) {
   return (
     <div className="flex border-b border-gray-200 bg-gray-50">
       {PLATFORMS.map((platform) => {
         const isActive = platform === activePlatform;
-        const isGenerating = isStreaming && platform === currentPlatform;
+        const status = platformStatuses[platform];
         const count = counts[platform] || 0;
 
         return (
@@ -46,25 +45,41 @@ export function PlatformTabs({
                 : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
             }`}
           >
-            <span className={isGenerating ? "animate-pulse" : ""}>
+            <span className={status.isStreaming ? "animate-pulse" : ""}>
               {platformIcons[platform]}
             </span>
-            <span className="hidden sm:inline">{platformLabels[platform]}</span>
+            <span className="hidden sm:inline">
+              {platformLabels[platform]}
+            </span>
 
-            {count > 0 && (
+            {status.isComplete && count > 0 ? (
               <span
-                className={`px-1.5 py-0.5 text-xs rounded-full min-w-[18px] text-center transition-all ${
+                className={`px-1.5 py-0.5 text-xs rounded-full min-w-[18px] text-center ${
                   isActive
-                    ? "bg-blue-100 text-blue-700"
+                    ? "bg-green-100 text-green-700"
                     : "bg-gray-200 text-gray-600"
-                } ${isGenerating ? "animate-pulse" : ""}`}
+                }`}
               >
                 {count}
               </span>
+            ) : count > 0 ? (
+              <span
+                className={`px-1.5 py-0.5 text-xs rounded-full min-w-[18px] text-center ${
+                  isActive
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-gray-200 text-gray-600"
+                } ${status.isStreaming ? "animate-pulse" : ""}`}
+              >
+                {count}
+              </span>
+            ) : null}
+
+            {status.isStreaming && (
+              <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-ping" />
             )}
 
-            {isGenerating && (
-              <span className="absolute top-1 right-1 w-2 h-2 bg-green-500 rounded-full animate-ping" />
+            {status.isComplete && (
+              <Check className="w-3 h-3 text-green-500 absolute top-1 right-1" />
             )}
           </button>
         );

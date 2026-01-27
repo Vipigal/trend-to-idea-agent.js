@@ -3,14 +3,9 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { z } from "zod";
-import {
-  AgentStateType,
-  IdeaState,
-  TrendState,
-  BrandContextState,
-} from "../state";
+import { IdeaState, TrendState, BrandContextState } from "../state";
 import { getIdeasPrompt } from "../prompts";
-import { PlatformEnum, ThreadStatusEnum } from "../../schema";
+import { PlatformEnum } from "../../schema";
 
 const IdeaSchema = z.object({
   hook: z.string().describe("The opening line that stops the scroll"),
@@ -19,10 +14,17 @@ const IdeaSchema = z.object({
     .describe("Content format"),
   angle: z.string().describe("Why this specific take will resonate"),
   description: z.string().describe("What the content will cover"),
+  trendIndices: z
+    .array(z.number())
+    .describe("1-indexed trend numbers this idea draws from"),
 });
 
 const IdeasResponseSchema = z.object({
-  ideas: z.array(IdeaSchema).describe("Array of 2-3 content ideas"),
+  ideas: z
+    .array(IdeaSchema)
+    .min(2)
+    .max(5)
+    .describe("Array of 2-5 content ideas connecting multiple trends"),
 });
 
 type IdeasResponse = z.infer<typeof IdeasResponseSchema>;
@@ -30,7 +32,6 @@ type IdeasResponse = z.infer<typeof IdeasResponseSchema>;
 const baseModel = new ChatOpenAI({
   modelName: "gpt-4o",
   temperature: 0.7,
-  streaming: true,
 });
 
 const structuredModel = baseModel.withStructuredOutput(IdeasResponseSchema, {
@@ -38,184 +39,77 @@ const structuredModel = baseModel.withStructuredOutput(IdeasResponseSchema, {
   strict: true,
 });
 
-const PLATFORMS: PlatformEnum[] = [
-  PlatformEnum.LinkedIn,
-  PlatformEnum.Twitter,
-  PlatformEnum.TikTok,
-];
-
-export const generateIdeasNode = async (
-  state: AgentStateType
-): Promise<Partial<AgentStateType>> => {
-  console.log("[GENERATE_IDEAS] Starting idea generation...");
-  console.log(`[GENERATE_IDEAS] Trends count: ${state.trends.length}`);
-
-  if (!state.trends || state.trends.length === 0) {
-    return {
-      error: "No trends available for idea generation",
-      currentStep: ThreadStatusEnum.Error,
-    };
-  }
-
-  const allIdeas: IdeaState[] = [];
-
-  try {
-    for (let trendIndex = 0; trendIndex < state.trends.length; trendIndex++) {
-      const trend = state.trends[trendIndex];
-      console.log(
-        `[GENERATE_IDEAS] Processing trend ${trendIndex + 1}/${state.trends.length}: ${trend.title}`
-      );
-
-      for (const platform of PLATFORMS) {
-        console.log(`[GENERATE_IDEAS] Generating ${platform} ideas...`);
-
-        const systemPrompt = getIdeasPrompt(state.brandContext, platform);
-
-        const trendContext = `
-Trend: ${trend.title}
-Summary: ${trend.summary}
-Why it matters: ${trend.whyItMatters}
-Supporting sources:
-${trend.sources.map((s) => `- ${s.title}: ${s.url}`).join("\n")}
-`;
-
-        try {
-          const response = (await structuredModel.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(
-              `Generate 2-3 ${platform} content ideas for this trend:\n\n${trendContext}`
-            ),
-          ])) as IdeasResponse;
-
-          for (const idea of response.ideas) {
-            allIdeas.push({
-              trendIndex,
-              platform,
-              hook: idea.hook,
-              format: idea.format,
-              angle: idea.angle,
-              description: idea.description,
-            });
-          }
-
-          console.log(
-            `[GENERATE_IDEAS] Generated ${response.ideas.length} ideas for ${platform}`
-          );
-        } catch (parseError) {
-          console.error(
-            `[GENERATE_IDEAS] Failed to generate ${platform} ideas for trend ${trendIndex}:`,
-            parseError
-          );
-        }
-      }
-    }
-
-    console.log(`[GENERATE_IDEAS] Generated ${allIdeas.length} total ideas`);
-
-    return {
-      ideas: allIdeas,
-      currentStep: ThreadStatusEnum.GeneratingIdeas,
-      error: null,
-    };
-  } catch (error) {
-    console.error("[GENERATE_IDEAS] Error:", error);
-    return {
-      error: `Idea generation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      currentStep: ThreadStatusEnum.Error,
-    };
-  }
-};
-
-export async function* generateIdeasStreaming(
+export async function* generateIdeasForPlatformStreaming(
+  platform: PlatformEnum,
   trends: TrendState[],
   brandContext: BrandContextState
 ): AsyncGenerator<{
   type: "status" | "idea" | "complete" | "error";
-  platform?: PlatformEnum;
-  trendIndex?: number;
+  platform: PlatformEnum;
   idea?: IdeaState;
   message?: string;
   totalIdeas?: number;
 }> {
-  console.log("[GENERATE_IDEAS_STREAM] Starting streaming generation...");
+  console.log(`[IDEAS:${platform}] Starting generation for ${platform}...`);
 
-  let totalIdeas = 0;
+  yield {
+    type: "status",
+    platform,
+    message: `Starting ${platform} ideas generation...`,
+  };
+
+  const trendsWithIndex = trends.map((t, i) => ({
+    title: t.title,
+    summary: t.summary,
+    whyItMatters: t.whyItMatters,
+    index: i,
+  }));
+
+  const systemPrompt = getIdeasPrompt(brandContext, platform, trendsWithIndex);
+
+  const trendsContext = trends
+    .map(
+      (t, i) =>
+        `${i + 1}. ${t.title}: ${t.summary} — Why it matters: ${t.whyItMatters}`
+    )
+    .join("\n");
 
   try {
-    for (let trendIndex = 0; trendIndex < trends.length; trendIndex++) {
-      const trend = trends[trendIndex];
+    const response = (await structuredModel.invoke([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(
+        `Generate ${platform} content ideas based on these ${trends.length} trends:\n\n${trendsContext}`
+      ),
+    ])) as IdeasResponse;
 
-      yield {
-        type: "status",
-        message: `Generating ideas for: ${trend.title}`,
-        trendIndex,
+    let count = 0;
+    for (const ideaData of response.ideas) {
+      const trendIndices = ideaData.trendIndices.map((i) => i - 1);
+
+      const idea: IdeaState = {
+        trendIndices,
+        platform,
+        hook: ideaData.hook,
+        format: ideaData.format,
+        angle: ideaData.angle,
+        description: ideaData.description,
       };
 
-      for (const platform of PLATFORMS) {
-        yield {
-          type: "status",
-          message: `Creating ${platform} content...`,
-          platform,
-          trendIndex,
-        };
-
-        const systemPrompt = getIdeasPrompt(brandContext, platform);
-
-        const trendContext = `
-Trend: ${trend.title}
-Summary: ${trend.summary}
-Why it matters: ${trend.whyItMatters}
-`;
-
-        try {
-          const response = (await structuredModel.invoke([
-            new SystemMessage(systemPrompt),
-            new HumanMessage(
-              `Generate 2-3 ${platform} content ideas for this trend:\n\n${trendContext}`
-            ),
-          ])) as IdeasResponse;
-
-          for (const ideaData of response.ideas) {
-            const idea: IdeaState = {
-              trendIndex,
-              platform,
-              hook: ideaData.hook,
-              format: ideaData.format,
-              angle: ideaData.angle,
-              description: ideaData.description,
-            };
-
-            totalIdeas++;
-            yield {
-              type: "idea",
-              platform,
-              trendIndex,
-              idea,
-            };
-          }
-        } catch (error) {
-          console.error(
-            `[GENERATE_IDEAS_STREAM] Failed for ${platform}:`,
-            error
-          );
-          yield {
-            type: "status",
-            message: `Failed to generate ${platform} ideas, continuing...`,
-            platform,
-            trendIndex,
-          };
-        }
-      }
+      count++;
+      yield { type: "idea", platform, idea };
     }
 
     yield {
       type: "complete",
-      totalIdeas,
-      message: `Generated ${totalIdeas} ideas across ${PLATFORMS.length} platforms`,
+      platform,
+      totalIdeas: count,
+      message: `Generated ${count} ${platform} ideas`,
     };
   } catch (error) {
+    console.error(`[IDEAS:${platform}] Error:`, error);
     yield {
       type: "error",
+      platform,
       message: error instanceof Error ? error.message : "Unknown error",
     };
   }

@@ -25,14 +25,13 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
   const {
     isStreaming,
     isComplete,
-    currentPlatform,
-    currentTrendTitle,
     currentStatus,
     ideas,
     ideasCount,
     error,
     getIdeasByPlatform,
     getPlatformCounts,
+    platformStatuses,
   } = useIdeasStream(threadId);
 
   useEffect(() => {
@@ -40,9 +39,7 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
       const newIds = new Set<string>();
       for (let i = previousIdeasCount.current; i < ideas.length; i++) {
         const idea = ideas[i];
-        newIds.add(
-          `${idea.platform}-${idea.trendIndex}-${idea.hook.substring(0, 20)}`
-        );
+        newIds.add(`${idea.platform}-${idea.hook.substring(0, 20)}`);
       }
       setNewIdeaIds((prev) => new Set([...prev, ...newIds]));
 
@@ -58,17 +55,22 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
   }, [ideas]);
 
   useEffect(() => {
-    if (isStreaming && currentPlatform && currentPlatform !== activePlatform) {
-      const currentCount = getIdeasByPlatform(currentPlatform).length;
+    if (isStreaming) {
       const activeCount = getIdeasByPlatform(activePlatform).length;
-      if (currentCount > 0 && activeCount === 0) {
-        setActivePlatform(currentPlatform);
+      if (activeCount === 0) {
+        for (const platform of PLATFORMS) {
+          if (getIdeasByPlatform(platform).length > 0) {
+            setActivePlatform(platform);
+            break;
+          }
+        }
       }
     }
-  }, [currentPlatform, isStreaming, activePlatform, getIdeasByPlatform]);
+  }, [isStreaming, ideas.length, activePlatform, getIdeasByPlatform]);
 
   const counts = getPlatformCounts();
   const activeIdeas = getIdeasByPlatform(activePlatform);
+  const activePlatformStatus = platformStatuses[activePlatform];
 
   const handleRegenerate = async () => {
     setIsRegenerating(true);
@@ -80,6 +82,10 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
       setIsRegenerating(false);
     }
   };
+
+  const completedPlatformsCount = PLATFORMS.filter(
+    (p) => platformStatuses[p].isComplete
+  ).length;
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -95,7 +101,9 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
               <div className="flex items-center gap-2 text-sm text-gray-500">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span className="hidden sm:inline">
-                  {isRegenerating ? "Regenerating..." : "Generating..."}
+                  {isRegenerating
+                    ? "Regenerating..."
+                    : `${completedPlatformsCount}/${PLATFORMS.length} platforms`}
                 </span>
               </div>
             ) : isComplete && ideasCount > 0 ? (
@@ -115,7 +123,7 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
         {(isStreaming || isRegenerating) && (
           <p className="text-xs text-gray-500 mt-1.5 truncate flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-            {currentStatus || currentTrendTitle || "Starting..."}
+            {currentStatus || "Starting parallel generation..."}
           </p>
         )}
       </div>
@@ -124,8 +132,7 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
         activePlatform={activePlatform}
         onPlatformChange={setActivePlatform}
         counts={counts}
-        isStreaming={isStreaming || isRegenerating}
-        currentPlatform={currentPlatform}
+        platformStatuses={platformStatuses}
       />
 
       <div ref={listRef} className="flex-1 overflow-y-auto p-4">
@@ -137,7 +144,7 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
           </div>
         ) : activeIdeas.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
-            {isStreaming || isRegenerating ? (
+            {activePlatformStatus.isStreaming || isRegenerating ? (
               <div className="flex flex-col items-center gap-3">
                 <div className="relative">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
@@ -161,7 +168,7 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
         ) : (
           <div className="space-y-3">
             {activeIdeas.map((idea, index) => {
-              const uniqueId = `${idea.platform}-${idea.trendIndex}-${idea.hook.substring(0, 20)}`;
+              const uniqueId = `${idea.platform}-${idea.hook.substring(0, 20)}`;
 
               return (
                 <IdeaCard
@@ -170,7 +177,7 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
                   format={idea.format}
                   angle={idea.angle}
                   description={idea.description}
-                  trendTitle={idea.trendTitle}
+                  trendTitles={idea.trendTitles}
                   isNew={newIdeaIds.has(uniqueId)}
                 />
               );
@@ -186,14 +193,19 @@ export function IdeasPanel({ threadId }: IdeasPanelProps) {
               <span className="font-medium text-gray-700">{ideasCount}</span>{" "}
               ideas across{" "}
               <span className="font-medium text-gray-700">
-                {PLATFORMS.length}
+                {completedPlatformsCount}/{PLATFORMS.length}
               </span>{" "}
               platforms
+              {isStreaming && (
+                <span className="ml-1 text-blue-500">
+                  — generating...
+                </span>
+              )}
             </span>
           ) : isStreaming || isRegenerating ? (
             <span className="flex items-center justify-center gap-1.5">
               <Loader2 className="w-3 h-3 animate-spin" />
-              Generating ideas...
+              Generating ideas in parallel...
             </span>
           ) : (
             "No ideas generated yet"

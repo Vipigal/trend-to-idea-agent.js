@@ -12,7 +12,6 @@ import {
   StreamEventTypeEnum,
   MessageRoleEnum,
   MessageTypeEnum,
-  PlatformEnum,
 } from "../schema";
 import type { HITLResumeValue } from "../agents/nodes/awaitApproval";
 import { TrendState } from "../agents/state";
@@ -145,52 +144,6 @@ export const resumeAfterApproval = internalAction({
 
           const output = nodeOutput as Record<string, unknown>;
 
-          if (nodeName === "generate_ideas" && output.ideas) {
-            const ideas = output.ideas as Array<{
-              trendIndex: number;
-              platform: string;
-              hook: string;
-              format: string;
-              angle: string;
-              description: string;
-            }>;
-
-            const trends = await ctx.runQuery(
-              internal.trends.getByThreadInternal,
-              { threadId }
-            );
-
-            for (const idea of ideas) {
-              const trend = trends[idea.trendIndex];
-              if (trend) {
-                await ctx.runMutation(internal.ideas.createInternal, {
-                  threadId,
-                  trendId: trend._id,
-                  platform: idea.platform as PlatformEnum,
-                  hook: idea.hook,
-                  format: idea.format,
-                  angle: idea.angle,
-                  description: idea.description,
-                });
-
-                await ctx.runMutation(internal.streamEvents.createInternal, {
-                  threadId,
-                  streamType: StreamTypeEnum.Ideas,
-                  eventType: StreamEventTypeEnum.Idea,
-                  node: nodeName,
-                  data: {
-                    platform: idea.platform,
-                    trendTitle: trend.title,
-                    hook: idea.hook,
-                    format: idea.format,
-                    angle: idea.angle,
-                    description: idea.description,
-                  },
-                });
-              }
-            }
-          }
-
           if (nodeName === "synthesize" && output.trends) {
             finalTrends = output.trends as TrendState[];
 
@@ -218,34 +171,30 @@ export const resumeAfterApproval = internalAction({
         }
       }
 
-      const finalStatus =
-        decision.action === "approved"
-          ? ThreadStatusEnum.Completed
-          : ThreadStatusEnum.AwaitingApproval;
+      if (decision.action === "approved") {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.actions.ideas.generateIdeasCoordinator,
+          { threadId }
+        );
+        console.log("[HITL] Approved — scheduled ideas coordinator");
+      } else {
+        await ctx.runMutation(internal.threads.updateStatusInternal, {
+          threadId,
+          status: ThreadStatusEnum.AwaitingApproval,
+        });
 
-      await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId,
-        status: finalStatus,
-      });
+        await ctx.runMutation(internal.streamEvents.createInternal, {
+          threadId,
+          streamType: StreamTypeEnum.Research,
+          eventType: StreamEventTypeEnum.Complete,
+          data: {
+            message: "Research complete",
+          },
+        });
 
-      const streamType =
-        decision.action === "approved"
-          ? StreamTypeEnum.Ideas
-          : StreamTypeEnum.Research;
-
-      await ctx.runMutation(internal.streamEvents.createInternal, {
-        threadId,
-        streamType,
-        eventType: StreamEventTypeEnum.Complete,
-        data: {
-          message:
-            decision.action === "approved"
-              ? "Ideas generation complete"
-              : "Research complete",
-        },
-      });
-
-      console.log(`[HITL] Completed with status: ${finalStatus}`);
+        console.log("[HITL] Refinement complete, awaiting approval");
+      }
 
       return {
         success: true,

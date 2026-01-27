@@ -4,9 +4,10 @@ import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Doc } from "../_generated/dataModel";
-import { generateIdeasStreaming } from "../agents/nodes/generateIdeas";
+import { generateIdeasForPlatformStreaming } from "../agents/nodes/generateIdeas";
 import { TrendState, BrandContextState } from "../agents/state";
 import {
+  PlatformEnum,
   ThreadStatusEnum,
   StreamTypeEnum,
   StreamEventTypeEnum,
@@ -35,13 +36,76 @@ const DEFAULT_BRAND_CONTEXT: BrandContextState = {
   ],
 };
 
-export const generateIdeasWithStreaming = internalAction({
+const PLATFORMS: PlatformEnum[] = [
+  PlatformEnum.LinkedIn,
+  PlatformEnum.Twitter,
+  PlatformEnum.TikTok,
+];
+
+export const generateIdeasCoordinator = internalAction({
   args: {
     threadId: v.id("threads"),
   },
   handler: async (ctx, args) => {
     const { threadId } = args;
-    console.log(`[IDEAS] Starting idea generation for thread ${threadId}`);
+    console.log(`[IDEAS:COORD] Starting coordinator for thread ${threadId}`);
+
+    const trends = await ctx.runQuery(internal.trends.getByThreadInternal, {
+      threadId,
+    });
+
+    if (!trends || trends.length === 0) {
+      throw new Error("No trends found for this thread");
+    }
+
+    await ctx.runMutation(internal.ideas.deleteByThreadInternal, { threadId });
+    await ctx.runMutation(internal.streamEvents.clearByThread, {
+      threadId,
+      streamType: StreamTypeEnum.Ideas,
+    });
+
+    await ctx.runMutation(internal.threads.updateStatusInternal, {
+      threadId,
+      status: ThreadStatusEnum.GeneratingIdeas,
+    });
+
+    await ctx.runMutation(internal.streamEvents.createInternal, {
+      threadId,
+      streamType: StreamTypeEnum.Ideas,
+      eventType: StreamEventTypeEnum.NodeStart,
+      node: "generate_ideas_coordinator",
+      data: {
+        message: "Starting parallel ideas generation...",
+        trendsCount: trends.length,
+        platforms: PLATFORMS,
+        totalPlatforms: PLATFORMS.length,
+      },
+    });
+
+    for (const platform of PLATFORMS) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.actions.ideas.generateIdeasForPlatform,
+        {
+          threadId,
+          platform,
+        }
+      );
+    }
+
+    console.log(`[IDEAS:COORD] Scheduled ${PLATFORMS.length} platform workers`);
+  },
+});
+
+export const generateIdeasForPlatform = internalAction({
+  args: {
+    threadId: v.id("threads"),
+    platform: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { threadId, platform } = args;
+    const platformEnum = platform as PlatformEnum;
+    console.log(`[IDEAS:${platform}] Worker started`);
 
     try {
       const trends = await ctx.runQuery(internal.trends.getByThreadInternal, {
@@ -49,7 +113,7 @@ export const generateIdeasWithStreaming = internalAction({
       });
 
       if (!trends || trends.length === 0) {
-        throw new Error("No trends found for this thread");
+        throw new Error("No trends found");
       }
 
       const trendData: TrendState[] = trends.map((t: Doc<"trends">) => ({
@@ -60,33 +124,10 @@ export const generateIdeasWithStreaming = internalAction({
         sources: t.sources,
       }));
 
-      await ctx.runMutation(internal.ideas.deleteByThreadInternal, { threadId });
+      let platformIdeasCount = 0;
 
-      await ctx.runMutation(internal.streamEvents.clearByThread, {
-        threadId,
-        streamType: StreamTypeEnum.Ideas,
-      });
-
-      await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId,
-        status: ThreadStatusEnum.GeneratingIdeas,
-      });
-
-      await ctx.runMutation(internal.streamEvents.createInternal, {
-        threadId,
-        streamType: StreamTypeEnum.Ideas,
-        eventType: StreamEventTypeEnum.NodeStart,
-        node: "generate_ideas",
-        data: {
-          message: "Starting idea generation...",
-          trendsCount: trends.length,
-          platforms: ["linkedin", "twitter", "tiktok"],
-        },
-      });
-
-      let ideasCount = 0;
-
-      for await (const event of generateIdeasStreaming(
+      for await (const event of generateIdeasForPlatformStreaming(
+        platformEnum,
         trendData,
         DEFAULT_BRAND_CONTEXT
       )) {
@@ -96,33 +137,35 @@ export const generateIdeasWithStreaming = internalAction({
               threadId,
               streamType: StreamTypeEnum.Ideas,
               eventType: StreamEventTypeEnum.Token,
-              node: "generate_ideas",
+              node: `generate_ideas_${platform}`,
               data: {
                 message: event.message,
-                platform: event.platform,
-                trendIndex: event.trendIndex,
+                platform,
               },
             });
             break;
 
           case "idea":
             if (event.idea) {
-              ideasCount++;
+              platformIdeasCount++;
 
-              const trendDoc = trends[event.idea.trendIndex];
-              if (!trendDoc) {
-                console.warn(
-                  `[IDEAS] Trend not found for index ${event.idea.trendIndex}`
-                );
-                continue;
-              }
+              const trendIds = event.idea.trendIndices
+                .filter((idx) => idx >= 0 && idx < trends.length)
+                .map((idx) => trends[idx]._id);
+
+              const safeTrendIds =
+                trendIds.length > 0 ? trendIds : trends.map((t) => t._id);
+
+              const trendTitles = event.idea.trendIndices
+                .filter((idx) => idx >= 0 && idx < trends.length)
+                .map((idx) => trends[idx].title);
 
               const ideaId = await ctx.runMutation(
                 internal.ideas.createInternal,
                 {
                   threadId,
-                  trendId: trendDoc._id,
-                  platform: event.idea.platform,
+                  trendIds: safeTrendIds,
+                  platform: platformEnum,
                   hook: event.idea.hook,
                   format: event.idea.format,
                   angle: event.idea.angle,
@@ -134,22 +177,21 @@ export const generateIdeasWithStreaming = internalAction({
                 threadId,
                 streamType: StreamTypeEnum.Ideas,
                 eventType: StreamEventTypeEnum.Idea,
-                node: "generate_ideas",
+                node: `generate_ideas_${platform}`,
                 data: {
                   ideaId,
-                  platform: event.idea.platform,
-                  trendIndex: event.idea.trendIndex,
-                  trendTitle: trendDoc.title,
+                  platform,
+                  trendTitles,
                   hook: event.idea.hook,
                   format: event.idea.format,
                   angle: event.idea.angle,
                   description: event.idea.description,
-                  ideasCount,
+                  platformIdeasCount,
                 },
               });
 
               console.log(
-                `[IDEAS] Saved idea ${ideasCount}: "${event.idea.hook.substring(0, 40)}..."`
+                `[IDEAS:${platform}] Saved idea ${platformIdeasCount}: "${event.idea.hook.substring(0, 40)}..."`
               );
             }
             break;
@@ -159,9 +201,10 @@ export const generateIdeasWithStreaming = internalAction({
               threadId,
               streamType: StreamTypeEnum.Ideas,
               eventType: StreamEventTypeEnum.Error,
-              node: "generate_ideas",
+              node: `generate_ideas_${platform}`,
               data: {
                 message: event.message,
+                platform,
               },
             });
             break;
@@ -174,52 +217,53 @@ export const generateIdeasWithStreaming = internalAction({
       await ctx.runMutation(internal.streamEvents.createInternal, {
         threadId,
         streamType: StreamTypeEnum.Ideas,
-        eventType: StreamEventTypeEnum.NodeEnd,
-        node: "generate_ideas",
-      });
-
-      await ctx.runMutation(internal.streamEvents.createInternal, {
-        threadId,
-        streamType: StreamTypeEnum.Ideas,
         eventType: StreamEventTypeEnum.Complete,
+        node: `generate_ideas_${platform}`,
         data: {
-          ideasCount,
-          message: `Generated ${ideasCount} content ideas`,
+          platform,
+          ideasCount: platformIdeasCount,
+          message: `${platform} complete: ${platformIdeasCount} ideas`,
         },
       });
 
-      await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId,
-        status: ThreadStatusEnum.Completed,
-      });
+      console.log(`[IDEAS:${platform}] Done. ${platformIdeasCount} ideas.`);
 
-      console.log(`[IDEAS] Completed. Generated ${ideasCount} ideas.`);
+      const allEvents = await ctx.runQuery(
+        internal.streamEvents.getByThreadInternal,
+        {
+          threadId,
+          streamType: StreamTypeEnum.Ideas,
+        }
+      );
 
-      return {
-        success: true,
-        ideasCount,
-      };
+      const completedPlatforms = allEvents.filter(
+        (e) =>
+          e.eventType === StreamEventTypeEnum.Complete &&
+          e.data?.platform !== undefined
+      );
+
+      if (completedPlatforms.length >= PLATFORMS.length) {
+        await ctx.runMutation(internal.threads.updateStatusInternal, {
+          threadId,
+          status: ThreadStatusEnum.Completed,
+        });
+        console.log(
+          `[IDEAS:${platform}] All platforms done. Thread completed.`
+        );
+      }
     } catch (error) {
-      console.error("[IDEAS] Error:", error);
+      console.error(`[IDEAS:${platform}] Error:`, error);
 
       await ctx.runMutation(internal.streamEvents.createInternal, {
         threadId,
         streamType: StreamTypeEnum.Ideas,
         eventType: StreamEventTypeEnum.Error,
+        node: `generate_ideas_${platform}`,
         data: {
           message: error instanceof Error ? error.message : "Unknown error",
+          platform,
         },
       });
-
-      await ctx.runMutation(internal.threads.updateStatusInternal, {
-        threadId,
-        status: ThreadStatusEnum.Error,
-      });
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
     }
   },
 });
@@ -265,15 +309,13 @@ export const startIdeasGeneration = action({
 
     await ctx.scheduler.runAfter(
       0,
-      internal.actions.ideas.generateIdeasWithStreaming,
-      {
-        threadId: args.threadId,
-      }
+      internal.actions.ideas.generateIdeasCoordinator,
+      { threadId: args.threadId }
     );
 
     return {
       started: true,
-      message: "Ideas generation started",
+      message: "Ideas generation started (parallel)",
       trendsCount: trendsResult.length,
     };
   },
@@ -298,15 +340,13 @@ export const regenerateIdeas = action({
 
     await ctx.scheduler.runAfter(
       0,
-      internal.actions.ideas.generateIdeasWithStreaming,
-      {
-        threadId: args.threadId,
-      }
+      internal.actions.ideas.generateIdeasCoordinator,
+      { threadId: args.threadId }
     );
 
     return {
       started: true,
-      message: "Ideas regeneration started",
+      message: "Ideas regeneration started (parallel)",
     };
   },
 });

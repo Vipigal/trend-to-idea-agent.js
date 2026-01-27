@@ -43,7 +43,7 @@ export const getByPlatform = query({
 export const create = mutation({
   args: {
     threadId: v.id("threads"),
-    trendId: v.id("trends"),
+    trendIds: v.array(v.id("trends")),
     platform: platformValidator,
     hook: v.string(),
     format: v.string(),
@@ -112,7 +112,7 @@ export const getByPlatformInternal = internalQuery({
 export const createInternal = internalMutation({
   args: {
     threadId: v.id("threads"),
-    trendId: v.id("trends"),
+    trendIds: v.array(v.id("trends")),
     platform: platformValidator,
     hook: v.string(),
     format: v.string(),

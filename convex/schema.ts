@@ -141,7 +141,7 @@ export default defineSchema({
 
   ideas: defineTable({
     threadId: v.id("threads"),
-    trendId: v.id("trends"),
+    trendIds: v.array(v.id("trends")),
 
     platform: platformValidator,
 
@@ -162,7 +162,6 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_thread", ["threadId"])
-    .index("by_trend", ["trendId"])
     .index("by_platform", ["threadId", "platform"]),
 
   streamState: defineTable({

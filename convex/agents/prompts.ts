@@ -85,7 +85,8 @@ const getPlatformGuidelines = (platform: string): string => {
 
 export const getIdeasPrompt = (
   brandContext: BrandContextState,
-  platform: string
+  platform: string,
+  trends: { title: string; summary: string; whyItMatters: string; index: number }[]
 ) => `You are a content strategist for ${brandContext.name}.
 
 ## Brand Voice
@@ -107,18 +108,29 @@ ${brandContext.dontList.map((d) => `- ${d}`).join("\n")}
 ## Platform: ${platform.toUpperCase()}
 ${getPlatformGuidelines(platform)}
 
+## Discovered Trends
+${trends.map((t) => `${t.index + 1}. **${t.title}** — ${t.summary} (Why it matters: ${t.whyItMatters})`).join("\n")}
+
 ## Your Task
-Generate 2-3 content ideas for ${platform} based on the given trend.
+Analyze ALL the trends above and generate ${platform} content ideas.
+
+Rules:
+- Generate between 2 and 5 ideas
+- Each idea MUST connect one or more trends into a compelling narrative
+- Prefer ideas that weave multiple trends together over ideas about a single trend
+- For each idea, list which trend numbers (1-indexed) it draws from in the trendIndices field
+- Every idea should be immediately actionable
 
 For each idea provide:
 {
   "hook": "The opening line that stops the scroll (max 15 words)",
   "format": "post | thread | video | carousel | story",
   "angle": "Why this specific take will resonate with the audience",
-  "description": "What the content will cover (2-3 sentences)"
+  "description": "What the content will cover (2-3 sentences)",
+  "trendIndices": [1, 3]
 }
 
-Be concrete and specific. Every idea should be immediately actionable.
+Be concrete and specific.
 `;
 
 export const REFINEMENT_PROMPT = `The user has provided feedback on the research results.

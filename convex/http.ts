@@ -202,77 +202,23 @@ http.route({
       });
     }
 
-    const encoder = new TextEncoder();
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          await ctx.runMutation(internal.threads.updateStatusInternal, {
-            threadId: threadId as Id<"threads">,
-            status: ThreadStatusEnum.GeneratingIdeas,
-          });
-
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({ type: "start", trendsCount: trends.length })}\n\n`
-            )
-          );
-
-          const result = await ctx.runAction(
-            internal.actions.ideas.generateIdeasWithStreaming,
-            {
-              threadId: threadId as Id<"threads">,
-            }
-          );
-
-          if (result.success) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "complete",
-                  ideasCount: result.ideasCount,
-                })}\n\n`
-              )
-            );
-          } else {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({
-                  type: "error",
-                  message: result.error,
-                })}\n\n`
-              )
-            );
-          }
-
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`)
-          );
-          controller.close();
-        } catch (error) {
-          console.error("[HTTP] Ideas stream error:", error);
-          controller.enqueue(
-            encoder.encode(
-              `data: ${JSON.stringify({
-                type: "error",
-                message:
-                  error instanceof Error ? error.message : "Unknown error",
-              })}\n\n`
-            )
-          );
-          controller.close();
-        }
-      },
+    await ctx.runAction(internal.actions.ideas.generateIdeasCoordinator, {
+      threadId: threadId as Id<"threads">,
     });
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+    return new Response(
+      JSON.stringify({
+        started: true,
+        message: "Ideas generation started (parallel)",
+        trendsCount: trends.length,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
   }),
 });
 

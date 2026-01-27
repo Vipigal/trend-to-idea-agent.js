@@ -13,7 +13,7 @@ interface IdeaCardProps {
   format: string;
   angle: string;
   description: string;
-  trendTitle?: string;
+  trendTitles?: string[];
   isNew?: boolean;
 }
 
@@ -32,7 +32,7 @@ export function IdeaCard({
   format,
   angle,
   description,
-  trendTitle,
+  trendTitles,
   isNew = false,
 }: IdeaCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -59,10 +59,19 @@ export function IdeaCard({
         className="p-3 cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        {trendTitle && (
-          <div className="flex items-center gap-1.5 text-xs text-gray-500 mb-2">
-            <Lightbulb className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{trendTitle}</span>
+        {trendTitles && trendTitles.length > 0 && (
+          <div className="flex items-start gap-1.5 text-xs text-gray-500 mb-2">
+            <Lightbulb className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            <div className="flex flex-wrap gap-1">
+              {trendTitles.map((title, i) => (
+                <span
+                  key={i}
+                  className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600"
+                >
+                  {title}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
